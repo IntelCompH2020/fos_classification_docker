@@ -53,7 +53,7 @@ class TextProcessor():
             ]
         
         if torch.cuda.is_available():
-            self.device = f'cuda:{2}'
+            self.device = f'cuda:{0}'
         else:
             self.device = 'cpu'
 
