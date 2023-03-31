@@ -40,7 +40,7 @@ To run a container with the previous configuration, the following command is nee
 ## Flags:
 
 - --rm: remove the container when execution ends. (optional)
-- -i: set interactive mode. **It is optional**
+- -i: set interactive mode. (optional)
 - --name: a name for the container. (optional)
 - v: volume binding. It maps a local directory to a directory inside the container so that local files can be accessed from it. The format is: /absolute/path/to/local/dir:/absolute/path/to/container/dir. You need to also specify a local directory where the docker will save the output
 
