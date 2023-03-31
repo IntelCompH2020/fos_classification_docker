@@ -1,13 +1,6 @@
 """ 
 This script is used for inference.
 
-TODOs:
-    * Add a function to read arguments from the command line -- DONE
-    * Add a function that reads the input files
-    * Add a function that writes the output files
-    * Add a function for inferring a file
-    * Add the Level 4 labels to the graph
-
 Variable conventions:
 -- we can infer publications with whatever id they have as long as they have the required metadata
 -- however the id will be called "doi" in the code
