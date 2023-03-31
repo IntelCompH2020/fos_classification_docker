@@ -3,7 +3,7 @@
 This repository contains the code and the dockerfile for building the image and container responsible for the Field of Science classification of scientific publications.
 
 ## Contents of repository
-- input_test_files: Directory which contains test files for a demo. If you want to test the docker, then use this folder as the input volume to the docker when you run it. E.g. -v path/to/input_test_files:
+- input_files: Directory which contains test files for a demo. If you want to test the docker, then use this folder as the input volume to the docker when you run it. E.g. -v path/to/input_files:
 - Dockerfile: Contains the commands for building the docker
 - inference.py: Contains the code responsible for the inference procedure. This is the main script.
 - input_schema.json: Example schema for how the input should be.
@@ -44,7 +44,7 @@ To run a container with the previous configuration, the following command is nee
 - --name: a name for the container. (optional)
 - v: volume binding. It maps a local directory to a directory inside the container so that local files can be accessed from it. The format is: /absolute/path/to/local/dir:/absolute/path/to/container/dir. You need to also specify a local directory where the docker will save the output
 
-**Reminder**: If you want to test the docker, you need to use the following path as an input path --> -v path/to/input_test_files
+**Reminder**: If you want to test the docker, you need to use the following path as an input path --> -v path/to/input_files
 
 ## Example
 
