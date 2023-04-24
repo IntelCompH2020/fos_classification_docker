@@ -1,6 +1,13 @@
 """ 
 This script is used for inference.
 
+TODOs:
+    * Add a function to read arguments from the command line -- DONE
+    * Add a function that reads the input files
+    * Add a function that writes the output files
+    * Add a function for inferring a file
+    * Add the Level 4 labels to the graph
+
 Variable conventions:
 -- we can infer publications with whatever id they have as long as they have the required metadata
 -- however the id will be called "doi" in the code
@@ -233,7 +240,7 @@ def infer(**kwargs):
     ########################################
     # clean the graph from the dois that where inferred
     logger.info('Cleaning the graph from the inferred nodes')
-    multigraph.remove_nodes_from(ids)
+    multigraph.remove_nodes_from([doi])
     ########################################
     return out
 
@@ -300,14 +307,17 @@ def get_l5_filtering_embeddings(abstract, canditate_l5, preprocess, topk, text_p
     trigrams = text_processor.get_ngrams(pre_abstract, k=3)
     bigrams = text_processor.get_ngrams(pre_abstract, k=2)
     unigrams = text_processor.get_ngrams(pre_abstract, k=1)
-
+    if trigrams == [] and bigrams == [] and unigrams == []:
+        return []
     # the bigrams and trigrams that are identical will also be in the hits
     bigram_hits = text_processor.retrieve_similar_nodes(bigrams, topk)
-    bigram_hits = set([b for bi in bigram_hits if bi for tup in bi for b in tup])
+    if bigram_hits:
+        bigram_hits = set([b for bi in bigram_hits if bi for tup in bi for b in tup])
 
     # this also returns bigrams -- maybe limit only to trigrams
-    trigram_hits = text_processor.retrieve_similar_nodes(trigrams, topk)    
-    trigram_hits = set([b for bi in trigram_hits if bi for tup in bi for b in tup])
+    trigram_hits = text_processor.retrieve_similar_nodes(trigrams, topk)
+    if trigram_hits:    
+        trigram_hits = set([b for bi in trigram_hits if bi for tup in bi for b in tup])
 
     candidates = []
     candidates.extend(

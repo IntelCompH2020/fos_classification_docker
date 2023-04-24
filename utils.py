@@ -53,7 +53,7 @@ class TextProcessor():
             ]
         
         if torch.cuda.is_available():
-            self.device = f'cuda:{0}'
+            self.device = f'cuda:{2}'
         else:
             self.device = 'cpu'
 
@@ -208,7 +208,11 @@ class TextProcessor():
         return [' '.join(ng) for ng in ngrams(sequence=nltk.word_tokenize(x), n=k)]
     
     def retrieve_similar_nodes(self, query, k):
-        query_embedding = self.embedder.encode(query, convert_to_tensor=True, device=self.device)
+        try:
+            query_embedding = self.embedder.encode(query, convert_to_tensor=True, device=self.device)
+        except RuntimeError:
+            print('Error in encoding query')
+            return []
         hits = util.semantic_search(query_embedding, self.embeddings, top_k=k)
         # unpack hits and convert to nodes
         return [[(q, self.idx2node[h['corpus_id']]) for h in hit if h['score'] >= 0.8] for q, hit in zip(query, hits)]
