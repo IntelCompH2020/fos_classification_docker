@@ -565,11 +565,11 @@ def create_payload(dato):
             payload['published_venues'][my_id] = {}
         ##############################################
         payload['dois'].append(my_id)
-        if 'title' not in d:
+        if 'title' not in d or d['title'] == 'NULL':
             payload['titles'][my_id] = ''
         else:
             payload['titles'][my_id] = d['title']
-        if 'abstract' not in d:
+        if 'abstract' not in d or d['abstract'] == 'NULL':
             payload['abstracts'][my_id] = ''
         else:
             payload['abstracts'][my_id] = d['abstract']
