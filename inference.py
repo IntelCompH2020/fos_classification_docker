@@ -240,7 +240,7 @@ def infer(**kwargs):
     ########################################
     # clean the graph from the dois that where inferred
     logger.info('Cleaning the graph from the inferred nodes')
-    multigraph.remove_nodes_from([doi])
+    multigraph.remove_nodes_from(ids)
     ########################################
     return out
 
