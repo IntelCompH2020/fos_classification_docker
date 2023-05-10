@@ -14,8 +14,8 @@ RUN mkdir /output_files
 WORKDIR /app
 
 # download the scinobo inference graph and the graph embeddings
-RUN wget https://www.dropbox.com/s/24meya731v5ub5d/graph_embeddings_with_L6_21_12_2022.p?dl=0 -O graph_embeddings_with_L6_21_12_2022.p
-RUN wget https://www.dropbox.com/s/qr26k9zbwpeyoyz/scinobo_inference_graph.p?dl=0 -O scinobo_inference_graph.p
+# RUN wget https://www.dropbox.com/s/24meya731v5ub5d/graph_embeddings_with_L6_21_12_2022.p?dl=0 -O graph_embeddings_with_L6_21_12_2022.p
+# RUN wget https://www.dropbox.com/s/qr26k9zbwpeyoyz/scinobo_inference_graph.p?dl=0 -O scinobo_inference_graph.p
 
 COPY . /app
 
