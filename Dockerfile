@@ -9,7 +9,7 @@ RUN pip3 install -r requirements.txt
 RUN python3 -m spacy download en_core_web_sm
 
 # download nltk punkt and stopwords
-# RUN python3 -m nltk.downloader punkt
+RUN python3 -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
 # RUN python3 -m nltk.downloader stopwords
 
 # Build directory architecture

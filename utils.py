@@ -24,8 +24,8 @@ from tqdm import tqdm
 from gensim.parsing.preprocessing import preprocess_string, strip_multiple_whitespaces, remove_stopwords, strip_punctuation
 
 # download stopwords
-nltk.download('stopwords')
-nltk.download('punkt')
+# nltk.download('stopwords')
+# nltk.download('punkt')
 
 from nltk.corpus import stopwords
 from nltk.util import ngrams

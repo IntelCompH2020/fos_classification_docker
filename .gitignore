@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 *.p
+*.zip
+all-mpnet-base-v2/
 build/
 develop-eggs/
 dist/
