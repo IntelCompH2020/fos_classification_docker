@@ -15,7 +15,7 @@ import nltk
 import torch
 
 # this is for blocking tensorflow -- it reserves all the gpu memory for some reason
-os.environ["CUDA_VISIBLE_DEVICES"] = "" 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "" 
 
 import spacy
 
@@ -34,7 +34,7 @@ from sklearn.cluster import AgglomerativeClustering
 
 
 # os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
 
 
 class TextProcessor():
@@ -56,7 +56,7 @@ class TextProcessor():
             self.device = f'cuda:{2}'
         else:
             self.device = 'cpu'
-
+        print(f'Using device: {self.device}')
         self.cwd = os.getcwd()
         self.embedder = SentenceTransformer(f'{self.cwd}/all-mpnet-base-v2', device=self.device)
         self.spacy_model = spacy.load("en_core_web_sm")
@@ -210,7 +210,7 @@ class TextProcessor():
     
     def retrieve_similar_nodes(self, query, k):
         try:
-            query_embedding = self.embedder.encode(query, convert_to_tensor=True, device=self.device)
+            query_embedding = self.embedder.encode(query, convert_to_tensor=True, device=self.device, show_progress_bar=False)
         except RuntimeError:
             print('Error in encoding query')
             return []
