@@ -30,23 +30,16 @@ from utils import TextProcessor
 
 def infer_relationship(entity, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite, relationship):
 
-        # multigraph.infer_layer(entity_chain=["doi", "venue", "L4"], relationship_chain=[relationship, "in_L4"],
-        #                        overwrite=overwrite, max_links=top_L4)
-        # multigraph.infer_layer(entity_chain=["doi", "venue", "L3"], relationship_chain=[relationship, "in_L3"],
-        #                        overwrite=overwrite, max_links=top_L3)
-        # multigraph.infer_layer(entity_chain=["doi", "venue", "L2"], relationship_chain=[relationship, "in_L2"],
-        #                        overwrite=overwrite, max_links=top_L2)
-        # multigraph.infer_layer(entity_chain=["doi", "venue", "L1"], relationship_chain=[relationship, "in_L1"],
-        #                        overwrite=overwrite, max_links=top_L1)
-
         multigraph.infer_layer(entity_chain=["doi", "venue", "L4"], relationship_chain=[relationship, "in_L4"],
                                overwrite=overwrite, max_links=top_L4)
         multigraph.infer_layer(entity_chain=["doi", "venue", "L3"], relationship_chain=[relationship, "in_L3"],
                                overwrite=overwrite, max_links=top_L3)
-        multigraph.infer_layer(entity_chain=["doi", "venue", "L2"], relationship_chain=[relationship, "in_L2"],
-                               overwrite=overwrite, max_links=top_L2)
-        multigraph.infer_layer(entity_chain=["doi", "venue", "L1"], relationship_chain=[relationship, "in_L1"],
-                               overwrite=overwrite, max_links=top_L1)
+        
+        # NOTE there is no need for these two infer_layers -- since we infer with L3,L4
+        # multigraph.infer_layer(entity_chain=["doi", "venue", "L2"], relationship_chain=[relationship, "in_L2"],
+        #                        overwrite=overwrite, max_links=top_L2)
+        # multigraph.infer_layer(entity_chain=["doi", "venue", "L1"], relationship_chain=[relationship, "in_L1"],
+        #                        overwrite=overwrite, max_links=top_L1)
 
 
 def add_to_predictions(tups, title, abstract):
@@ -119,14 +112,9 @@ def infer(**kwargs):
     # inferring relationships
     logger.info('Inferring relationships')
     _ = [
-        infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=True,
-                           relationship='cites'),
-        infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=False,
-                           relationship='published')] if emphasize == 'citations' else [
-        infer_relationship(ids, multigraph, top_L4, overwrite=True,
-                           relationship='published'),
-        infer_relationship(ids, multigraph, top_L4, overwrite=False,
-                           relationship='cites')]
+        infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=True, relationship='cites'),
+        infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=False, relationship='published')
+    ]
 
     out = {}
     logger.info('Retrieving results for publications')

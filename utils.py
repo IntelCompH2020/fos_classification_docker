@@ -33,7 +33,7 @@ from sentence_transformers import SentenceTransformer, util
 from sklearn.cluster import AgglomerativeClustering
 
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
 
 
