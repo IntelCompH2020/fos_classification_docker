@@ -8,6 +8,10 @@ RUN pip3 install -r requirements.txt
 # download spacy model
 RUN python3 -m spacy download en_core_web_sm
 
+# download nltk punkt and stopwords
+RUN python3 -m nltk.downloader punkt
+RUN python3 -m nltk.downloader stopwords
+
 # Build directory architecture
 RUN mkdir /input_files
 RUN mkdir /output_files

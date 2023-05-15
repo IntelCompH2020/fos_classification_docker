@@ -57,7 +57,8 @@ class TextProcessor():
         else:
             self.device = 'cpu'
 
-        self.embedder = SentenceTransformer('all-mpnet-base-v2', device=self.device)
+        self.cwd = os.getcwd()
+        self.embedder = SentenceTransformer(f'{self.cwd}/all-mpnet-base-v2', device=self.device)
         self.spacy_model = spacy.load("en_core_web_sm")
         self.lemmatizer_to_use = my_lemmatizer
         if self.lemmatizer_to_use == 'spacy':
