@@ -19,6 +19,7 @@ import pickle
 import json
 import argparse
 import logging
+import time
 
 from pprint import pprint
 from tqdm import tqdm
@@ -26,20 +27,78 @@ from collections import Counter
 from venue_parser import VenueParser
 from multigraph import MultiGraph
 from utils import TextProcessor
+from itertools import groupby
+
+
+def parse_args():
+    ##############################################
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--in_path", type=str, default='/input_files', help="The directory where the chunks of publications along with metadata exist", required=False)
+    parser.add_argument("--out_path", type=str, default='/mnt/data/fos_classification_docker/output_files/', help="The directory where the output files will be written", required=False)
+    parser.add_argument("--log_path", type=str,default='/mnt/data/fos_classification_docker/output_files/fos_inference.log',  help="The path for the log file.", required=False)
+    parser.add_argument("--emphasize", type=str,default='citations',  help="If you want to emphasize in published venue or the cit/refs", required=False)
+    # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
+    parser.add_argument("--batch_size", type=int, default=500,  help="The batch size", required=False)
+    args = parser.parse_args()
+    return args
+    ##############################################
+
+
+# parse args
+arguments = parse_args()
+
+# init the logger
+logging.basicConfig(
+    filename=arguments.log_path,
+    filemode='w',
+    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+    datefmt='%H:%M:%S',
+    level=logging.INFO
+)
+logging.info("Running FoS inference")
+logger = logging.getLogger('inference')
+
+# rest of initializations
+logger.info('Initializing the venue parser')
+venue_parser = VenueParser(abbreviation_dict='venues_maps.p')
+logger.info('Initializing the multigraph')
+multigraph = MultiGraph('scinobo_inference_graph.p')
+logger.info('Initializing the text processor')
+text_processor = TextProcessor()
+# load mapping of the texonomy
+logger.info('Loading the mappings of the taxonomy')
+# load mappings
+with open('L2_to_L1.json', 'r') as fin:
+    L2_to_L1 = json.load(fin)
+with open('L3_to_L2.json', 'r') as fin:
+    L3_to_L2 = json.load(fin)
+with open('L4_to_L3.json', 'r') as fin:
+    L4_to_L3 = json.load(fin)
 
 
 def infer_relationship(entity, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite, relationship):
-
         multigraph.infer_layer(entity_chain=["doi", "venue", "L4"], relationship_chain=[relationship, "in_L4"],
                                overwrite=overwrite, max_links=top_L4)
         multigraph.infer_layer(entity_chain=["doi", "venue", "L3"], relationship_chain=[relationship, "in_L3"],
                                overwrite=overwrite, max_links=top_L3)
-        
-        # NOTE there is no need for these two infer_layers -- since we infer with L3,L4
-        # multigraph.infer_layer(entity_chain=["doi", "venue", "L2"], relationship_chain=[relationship, "in_L2"],
-        #                        overwrite=overwrite, max_links=top_L2)
-        # multigraph.infer_layer(entity_chain=["doi", "venue", "L1"], relationship_chain=[relationship, "in_L1"],
-        #                        overwrite=overwrite, max_links=top_L1)
+
+
+def emit_candidate_ngrams(processed_text, topk):
+    # extract ngrams and similar ngrams from the inference graph--once here
+    trigrams = text_processor.get_ngrams(processed_text, k=3)
+    bigrams = text_processor.get_ngrams(processed_text, k=2)
+    unigrams = text_processor.get_ngrams(processed_text, k=1)
+    if trigrams == [] and bigrams == [] and unigrams == []:
+        return []
+    # the bigrams and trigrams that are identical will also be in the hits
+    # concat bigrams and trigrams
+    my_ngrams = list(set(bigrams + trigrams))
+    my_ngrams_hits = text_processor.retrieve_similar_nodes(my_ngrams, topk)
+    if my_ngrams_hits:
+        my_ngrams_hits = set([b for bi in my_ngrams_hits if bi for tup in bi for b in tup])
+    else:
+        my_ngrams_hits = set()
+    return unigrams, my_ngrams_hits
 
 
 def add_to_predictions(tups, title, abstract):
@@ -47,29 +106,39 @@ def add_to_predictions(tups, title, abstract):
     processed_title = text_processor.preprocess_text(title)
     processed_abstract = text_processor.preprocess_text(abstract)
     my_text = processed_title + processed_abstract
+    res = emit_candidate_ngrams(my_text, 5)
+    if not res:
+        return []
+    my_unigrams, bi_tri_grams = res
+    all_hits = set(my_unigrams) | bi_tri_grams
+    all_l5s = [node[0] for node in multigraph.nodes(data='L5') if node[1] and any([t[3][0] in node[0] for t in tups if len(t) > 3])]
+    l5s = filter_level_5(
+        all_l5s,
+        multigraph,
+        all_hits,
+        only_text=False
+    )
+    ######################################################
+    # add to the respective tups with L4s the L5s and L6s
     final_tups = []
     for tup in tups:
-        # check if we have an L4
         if len(tup) > 3:
-            # this tup has an inferred L4 -- infer its L5/L6
-            l4 = tup[3][0]
-            my_l5s = [node[0] for node in multigraph.nodes(data='L5') if node[1] and l4 in node[0]]
-            l5s = get_l5_filtering_embeddings(
-                my_text, my_l5s, False, 5, text_processor, multigraph, only_text=False
-            )
             if l5s:
-                # check if we have inferred l5s and add them to the tuples
-                final_tups.extend([(tup[0], tup[1], tup[2], tup[3], (l5[0], l5[1]), '/'.join(list(l5[2]))) for l5 in l5s])
+                l5 = [l for l in l5s if tup[3][0] in l[0]]
+                if not l5:
+                    tup = tup + (None, None)
+                    final_tups.append(tup)
+                    continue
+                # add to tup
+                for l in l5:
+                    final_tups.extend([(tup[0], tup[1], tup[2], tup[3], (l[0], l[1]), '/'.join(list(l[2])))])
             else:
-                # no l5s were inferred -- add None to l5 and l6
-                to_add = list(tup)
-                to_add.extend([None, None])
-                final_tups.append(tuple(to_add))
+                tup = tup + (None, None)
+                final_tups.append(tup)
         else:
-            # this tup does not have an inferred L4 -- add None
-            to_add = list(tup)
-            to_add.extend([None, None, None])
-            final_tups.append(tuple(to_add))
+            tup = tup + (None, None, None)
+            final_tups.append(tup)
+    ######################################################
     return final_tups
 
 
@@ -108,52 +177,77 @@ def infer(**kwargs):
     abstracts = kwargs['payload']['abstracts']
     # add the publications to the graph that we are going to infer
     logger.info('Adding publications to the graph')
+    add_nodes_time = time.time()
     add(multigraph, published_venues, cit_ref_venues)
+    logger.info(f'Adding publications to the graph took {time.time() - add_nodes_time} seconds')
     # inferring relationships
+    infer_relas_time = time.time()
     logger.info('Inferring relationships')
     _ = [
         infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=True, relationship='cites'),
         infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=False, relationship='published')
     ]
-
+    logger.info(f'Inferring relationships took {time.time() - infer_relas_time} seconds. This inference is about L1-L4')
     out = {}
     logger.info('Retrieving results for publications')
-    for doi in tqdm(ids, desc='Retrieving results for publications'):
-        L1 = [(relationship[1], relationship[2]) for relationship in multigraph.edges(data='in_L1', nbunch=doi) if
-            relationship[2]]
-        L2 = [(relationship[1], relationship[2]) for relationship in multigraph.edges(data='in_L2', nbunch=doi) if
-            relationship[2]]
-        L3 = [(relationship[1], relationship[2]) for relationship in multigraph.edges(data='in_L3', nbunch=doi) if
-            relationship[2]]
-        L4 = [(relationship[1], relationship[2]) for relationship in multigraph.edges(data='in_L4', nbunch=doi) if
-            relationship[2]]
-        """ This is for not returning triplets -- we comment it out """
-        """
-        if not return_triplets:
-            # check if we only inferred L4 -- it is possible
-            if not L3 and not L2 and not L1:
-                my_triplets = [(L2_to_L1[list(L3_to_L2[L4_to_L3[tup[0]]].keys())[0]], list(L3_to_L2[L4_to_L3[tup[0]]].keys())[0], L4_to_L3[tup[0]], tup) for tup in L4]
-                out[doi] = [
-                    (
-                        {'L1': triplet[0], 'L2': triplet[1], 'L3':triplet[2], 'L4': triplet[3][0], 'score_for_L4': triplet[3][1]}
-                    ) for triplet in my_triplets
-                ]
-            else:
-                out[doi] = {
-                    'L1': L1,
-                    'L2': L2,
-                    'L3': L3,
-                    'L4': L4
-                }
-        else:"""
-        ############################################
-        # check if we only inferred L4 -- it is possible
-        if not L3 and not L2 and not L1:
+    all_l3s = [(relationship[0], relationship[1], relationship[2]) for relationship in multigraph.edges(data='in_L3', nbunch=ids) if relationship[2]]
+    all_l4s = [(relationship[0], relationship[1], relationship[2]) for relationship in multigraph.edges(data='in_L4', nbunch=ids) if relationship[2]]
+    # aggregate to relationship[0] which is the id
+    all_l3s = {k: [(i[1],i[2]) for i in list(v)] for k, v in groupby(all_l3s, key=lambda x: x[0])}
+    all_l4s = {k: [(i[1],i[2]) for i in list(v)] for k, v in groupby(all_l4s, key=lambda x: x[0])}
+    ########################################
+    # clean the graph from the dois that where inferred
+    logger.info('Cleaning the graph from the inferred nodes')
+    multigraph.remove_nodes_from(ids)
+    ########################################
+    for doi in tqdm(ids, desc='Infer L5/L6'):
+        if doi not in all_l3s and doi not in all_l4s:
+            out[doi] = [
+                (
+                    {
+                        'L1': None,
+                        'L2': None,
+                        'L3': None,
+                        'L4': None,
+                        'L5': None,
+                        'L6': None,
+                        'score_for_L3': 0.0, 
+                        'score_for_L4': 0.0, 
+                        'score_for_L5': 0.0
+                    }
+                )
+            ]
+        elif doi in all_l3s and doi not in all_l4s:
+            # we only inferred L3s
+            L3 = all_l3s[doi]
+            l3_mapping_to_l2 = [(tup, list(L3_to_L2[tup[0]].keys())) for tup in L3]
+            flatten_l3_to_l2 = [(tup[0], l2) for tup in l3_mapping_to_l2 for l2 in tup[1]]
+            l2_mapping_to_l1 = [(tup[0], tup[1], L2_to_L1[tup[1]]) for tup in flatten_l3_to_l2]
+            out[doi] = [
+                (
+                    {
+                        'L1': triplet[2],
+                        'L2': triplet[1],
+                        'L3': triplet[0][0],
+                        'L4': None,
+                        'L5': None,
+                        'L6': None,
+                        'score_for_L3': triplet[0][1], 
+                        'score_for_L4': 0.0, 
+                        'score_for_L5': 0.0
+                    }
+                ) for triplet in l2_mapping_to_l1
+            ]
+        elif doi not in all_l3s and doi in all_l4s:
+            # we only inferred L4s
+            L4 = all_l4s[doi]
             my_triplets = [(L2_to_L1[list(L3_to_L2[L4_to_L3[tup[0]]].keys())[0]],
                             list(L3_to_L2[L4_to_L3[tup[0]]].keys())[0], L4_to_L3[tup[0]], tup) for tup in L4]
             ############################################
             # infer L5 and L6
+            predict_one_l5_l6_time = time.time()
             preds_with_l5_l6 = infer_l5_l6(my_triplets, doi, titles[doi], abstracts[doi])
+            logger.info(f'Predicting L5 and L6 for {doi} took {time.time() - predict_one_l5_l6_time} seconds')
             out[doi] = [
                 (
                     {
@@ -170,66 +264,48 @@ def infer(**kwargs):
             ]
             ############################################
         else:
+            # we inferred both L3s and L4s
+            L3 = all_l3s[doi]
+            L4 = all_l4s[doi]
             l3_mapping_to_l2 = [(tup, list(L3_to_L2[tup[0]].keys())) for tup in L3]
             flatten_l3_to_l2 = [(tup[0], l2) for tup in l3_mapping_to_l2 for l2 in tup[1]]
             l2_mapping_to_l1 = [(tup[0], tup[1], L2_to_L1[tup[1]]) for tup in flatten_l3_to_l2]
-
-            if L4:
-                filtered_l4 = [
-                    (l4, (L3[[l3[0] for l3 in L3].index(L4_to_L3[l4[0]])])) for l4 in L4 if
-                            L4_to_L3[l4[0]] in [l3[0] for l3 in L3]
-                ]
-                my_tups = []
-                for tup in l2_mapping_to_l1:
-                    if tup[0][0] in [i[1][0] for i in filtered_l4]:
-                        my_tups.append((tup[2], tup[1], tup[0], filtered_l4[[i[1][0] for i in filtered_l4].index(tup[0][0])][0]))
-                    else:
-                        my_tups.append((tup[2], tup[1], tup[0]))
-                ############################################
-                # infer the L5 and L6
-                preds_with_l5_l6 = infer_l5_l6(
-                    my_tups,
-                    doi,
-                    titles[doi],
-                    abstracts[doi]
-                )
-                ############################################
-                out[doi] = [
-                    (
-                        {
-                            'L1': triplet[0],
-                            'L2': triplet[1],
-                            'L3': triplet[2][0],
-                            'L4': triplet[3][0] if triplet[3] else None,
-                            'L5': triplet[4][0] if triplet[4] else None,
-                            'L6': triplet[5] if triplet[5] else None,
-                            'score_for_L3': triplet[2][1] if triplet[2] else 0.0,
-                            'score_for_L4': triplet[3][1] if triplet[3] else 0.0,
-                            'score_for_L5': triplet[4][1] if triplet[4] else 0.0
-                        }
-                    ) for triplet in preds_with_l5_l6
-                ]
-            else:
-                out[doi] = [
-                    (
-                        {
-                            'L1': triplet[2],
-                            'L2': triplet[1],
-                            'L3': triplet[0][0],
-                            'L4': None,
-                            'L5': None,
-                            'L6': None,
-                            'score_for_L3': triplet[0][1], 
-                            'score_for_L4': 0.0, 
-                            'score_for_L5': 0.0
-                        }
-                    ) for triplet in l2_mapping_to_l1
-                ]
-    ########################################
-    # clean the graph from the dois that where inferred
-    logger.info('Cleaning the graph from the inferred nodes')
-    multigraph.remove_nodes_from(ids)
-    ########################################
+            filtered_l4 = [
+                (l4, (L3[[l3[0] for l3 in L3].index(L4_to_L3[l4[0]])])) for l4 in L4 if
+                        L4_to_L3[l4[0]] in [l3[0] for l3 in L3]
+            ]
+            my_tups = []
+            for tup in l2_mapping_to_l1:
+                if tup[0][0] in [i[1][0] for i in filtered_l4]:
+                    my_tups.append((tup[2], tup[1], tup[0], filtered_l4[[i[1][0] for i in filtered_l4].index(tup[0][0])][0]))
+                else:
+                    my_tups.append((tup[2], tup[1], tup[0]))
+            ############################################
+            # infer the L5 and L6
+            predict_one_l5_l6_time = time.time()
+            preds_with_l5_l6 = infer_l5_l6(
+                my_tups,
+                doi,
+                titles[doi],
+                abstracts[doi]
+            )
+            logger.info(f'Predicting L5 and L6 for {doi} took {time.time() - predict_one_l5_l6_time} seconds')
+            ############################################
+            out[doi] = [
+                (
+                    {
+                        'L1': triplet[0],
+                        'L2': triplet[1],
+                        'L3': triplet[2][0],
+                        'L4': triplet[3][0] if triplet[3] else None,
+                        'L5': triplet[4][0] if triplet[4] else None,
+                        'L6': triplet[5] if triplet[5] else None,
+                        'score_for_L3': triplet[2][1] if triplet[2] else 0.0,
+                        'score_for_L4': triplet[3][1] if triplet[3] else 0.0,
+                        'score_for_L5': triplet[4][1] if triplet[4] else 0.0
+                    }
+                ) for triplet in preds_with_l5_l6
+            ]
     return out
 
 
@@ -285,38 +361,10 @@ def one_ranking(l5s_to_keep, canditate_l5, my_occurences, my_graph):
     return [(l4, sorted(l5s, key= lambda x: x[2], reverse=True)[0], list(set([l1 for l in l5s for l1 in l[3]]))) for l4, l5s in sorted_final_ranking_per_l4.items()]
 
 
-def get_l5_filtering_embeddings(abstract, canditate_l5, preprocess, topk, text_processor, my_graph, only_text=False):
-    if preprocess:
-        pre_abstract = text_processor.preprocess_text(abstract)
-    else:
-        pre_abstract = abstract
-    if abstract == '' or abstract is None:
-        return []
-    trigrams = text_processor.get_ngrams(pre_abstract, k=3)
-    bigrams = text_processor.get_ngrams(pre_abstract, k=2)
-    unigrams = text_processor.get_ngrams(pre_abstract, k=1)
-    if trigrams == [] and bigrams == [] and unigrams == []:
-        return []
-    # the bigrams and trigrams that are identical will also be in the hits
-    bigram_hits = text_processor.retrieve_similar_nodes(bigrams, topk)
-    if bigram_hits:
-        bigram_hits = set([b for bi in bigram_hits if bi for tup in bi for b in tup])
-
-    # this also returns bigrams -- maybe limit only to trigrams
-    trigram_hits = text_processor.retrieve_similar_nodes(trigrams, topk)
-    if trigram_hits:    
-        trigram_hits = set([b for bi in trigram_hits if bi for tup in bi for b in tup])
-
+def filter_level_5(canditate_l5, my_graph, my_hits, only_text=False):    
     candidates = []
     candidates.extend(
-        [(bi, [n for n in my_graph[bi] if 'L5' in my_graph.nodes[n]]) for bi in bigram_hits if bi in my_graph])
-    candidates.extend(
-        [(bi, [n for n in my_graph[bi] if 'L5' in my_graph.nodes[n]]) for bi in trigram_hits if bi in my_graph])
-    
-    # we use unigrams as is -- we do not want to add more noise
-    candidates.extend(
-        [(bi, [n for n in my_graph[bi] if 'L5' in my_graph.nodes[n]]) for bi in unigrams if bi in my_graph])
-    
+        [(bi, [n for n in my_graph[bi] if 'L5' in my_graph.nodes[n]]) for bi in my_hits if bi in my_graph])
     words = []
     word_to_l5s = dict()
     for cand in candidates:
@@ -326,12 +374,10 @@ def get_l5_filtering_embeddings(abstract, canditate_l5, preprocess, topk, text_p
                 word_to_l5s[c].add(cand[0])
             except KeyError:
                 word_to_l5s[c] = {cand[0]}
-
     the_occurences = Counter(words)
     l5s_to_keep = {k: v for k, v in word_to_l5s.items() if len(v) > 1}
     if not l5s_to_keep:
         return []
-    
     if only_text:
         # only for text
         #########################################
@@ -446,24 +492,10 @@ def test():
     abstract = text_processor.preprocess_text(my_abstract)
     my_text = title + ' ' + abstract
     my_l5s = [node[0] for node in multigraph.nodes(data='L5') if node[1] and my_l4 in node[0]]
-    l5s = get_l5_filtering_embeddings(
+    l5s = filter_level_5(
         my_text, my_l5s, False, 5, text_processor, multigraph, only_text=False
     )
     pprint(l5s)
-
-
-def parse_args():
-    ##############################################
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--in_path", type=str, default='/input_files', help="The directory where the chunks of publications along with metadata exist", required=False)
-    parser.add_argument("--out_path", type=str, default='/output_files', help="The directory where the output files will be written", required=False)
-    parser.add_argument("--log_path", type=str,default='/output_files/fos_inference.log',  help="The path for the log file.", required=False)
-    parser.add_argument("--emphasize", type=str,default='citations',  help="If you want to emphasize in published venue or the cit/refs", required=False)
-    # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
-    parser.add_argument("--batch_size", type=int, default=500,  help="The batch size", required=False)
-    args = parser.parse_args()
-    return args
-    ##############################################
 
 
 def yielder(input_dir):
@@ -565,18 +597,6 @@ def create_payload(dato):
 
 
 if __name__ == '__main__':
-    # parse the arguments
-    arguments = parse_args()
-    # init the logger
-    logging.basicConfig(
-        filename=arguments.log_path,
-        filemode='a',
-        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-        datefmt='%H:%M:%S',
-        level=logging.INFO
-    )
-    logging.info("Running FoS inference")
-    logger = logging.getLogger('inference')
     # create the output directory
     logger.info('Creating the output directory: {}'.format(arguments.out_path))
     os.makedirs(arguments.out_path, exist_ok=True)
@@ -586,22 +606,6 @@ if __name__ == '__main__':
     if not os.path.exists(arguments.in_path):
         logger.error('The input directory does not exist: {}'.format(arguments.in_path))
         raise Exception('The input directory does not exist: {}'.format(arguments.in_path))
-    # rest of initializations
-    logger.info('Initializing the venue parser')
-    venue_parser = VenueParser(abbreviation_dict='venues_maps.p')
-    logger.info('Initializing the multigraph')
-    multigraph = MultiGraph('scinobo_inference_graph.p')
-    logger.info('Initializing the text processor')
-    text_processor = TextProcessor()
-    # load mapping of the texonomy
-    logger.info('Loading the mappings of the taxonomy')
-    # load mappings
-    with open('L2_to_L1.json', 'r') as fin:
-        L2_to_L1 = json.load(fin)
-    with open('L3_to_L2.json', 'r') as fin:
-        L3_to_L2 = json.load(fin)
-    with open('L4_to_L3.json', 'r') as fin:
-        L4_to_L3 = json.load(fin)
     # make sure that the publications have the necessary metadata
     total_files = len([f for f in os.listdir(arguments.in_path) if f.endswith('.json')])
     batch_size = arguments.batch_size

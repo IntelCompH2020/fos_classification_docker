@@ -33,8 +33,8 @@ from sentence_transformers import SentenceTransformer, util
 from sklearn.cluster import AgglomerativeClustering
 
 
-# os.environ["TOKENIZERS_PARALLELISM"] = "false"
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
 
 
 class TextProcessor():
@@ -53,12 +53,12 @@ class TextProcessor():
             ]
         
         if torch.cuda.is_available():
-            self.device = f'cuda:{2}'
+            self.device = f'cuda:{0}'
         else:
             self.device = 'cpu'
         print(f'Using device: {self.device}')
         self.cwd = os.getcwd()
-        self.embedder = SentenceTransformer(f'{self.cwd}/all-mpnet-base-v2', device=self.device)
+        self.embedder = SentenceTransformer(f'all-mpnet-base-v2', device=self.device, cache_folder=self.cwd)
         self.spacy_model = spacy.load("en_core_web_sm")
         self.lemmatizer_to_use = my_lemmatizer
         if self.lemmatizer_to_use == 'spacy':
@@ -214,7 +214,7 @@ class TextProcessor():
         except RuntimeError:
             print('Error in encoding query')
             return []
-        hits = util.semantic_search(query_embedding, self.embeddings, top_k=k)
+        hits = util.semantic_search(query_embedding, self.embeddings, top_k=k, query_chunk_size=500)
         # unpack hits and convert to nodes
         return [[(q, self.idx2node[h['corpus_id']]) for h in hit if h['score'] >= 0.8] for q, hit in zip(query, hits)]
 

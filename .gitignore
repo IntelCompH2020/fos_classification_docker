@@ -5,7 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
-
+# model
+sentence-transformers_all-mpnet-base-v2
 # Distribution / packaging
 .Python
 *.p
