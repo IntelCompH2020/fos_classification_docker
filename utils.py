@@ -214,7 +214,7 @@ class TextProcessor():
         except RuntimeError:
             print('Error in encoding query')
             return []
-        hits = util.semantic_search(query_embedding, self.embeddings, top_k=k, query_chunk_size=500)
+        hits = util.semantic_search(query_embedding, self.embeddings, top_k=k, query_chunk_size=1000)
         # unpack hits and convert to nodes
         return [[(q, self.idx2node[h['corpus_id']]) for h in hit if h['score'] >= 0.8] for q, hit in zip(query, hits)]
 
