@@ -42,7 +42,7 @@ if __name__ == '__main__':
     # time the infer function
     infer_start = time.time()
     # the other functions will log their time in their inference logger
-    my_res = infer(payload=payload)
+    my_res = infer(payload=payload, only_l4=True)
     infer_end = time.time()
     print("Infer time: {}".format(infer_end - infer_start))
     # save the predictions
