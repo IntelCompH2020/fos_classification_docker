@@ -19,7 +19,9 @@ import pickle
 import json
 import argparse
 import logging
-import time
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from pprint import pprint
 from tqdm import tqdm
@@ -34,16 +36,16 @@ def parse_args():
     ##############################################
     parser = argparse.ArgumentParser()
     parser.add_argument("--in_path", type=str, default='/input_files', help="The directory where the chunks of publications along with metadata exist", required=False)
-    parser.add_argument("--out_path", type=str, default='/mnt/data/fos_classification_docker/output_files/', help="The directory where the output files will be written", required=False)
-    parser.add_argument("--log_path", type=str,default='/mnt/data/fos_classification_docker/output_files/fos_inference.log',  help="The path for the log file.", required=False)
+    parser.add_argument("--out_path", type=str, default='/output_files', help="The directory where the output files will be written", required=False)
+    parser.add_argument("--log_path", type=str,default='fos_inference.log',  help="The path for the log file.", required=False)
     parser.add_argument("--emphasize", type=str,default='citations',  help="If you want to emphasize in published venue or the cit/refs", required=False)
-    parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=False)
+    parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=True)
+    parser.add_argument("--file_type", type=str, default='parquet',  help="the file type we will load", required=True)
     # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
     parser.add_argument("--batch_size", type=int, default=500,  help="The batch size", required=False)
     args = parser.parse_args()
     return args
     ##############################################
-
 
 # parse args
 arguments = parse_args()
@@ -498,19 +500,18 @@ def test():
     pprint(l5s)
 
 
-def yielder(input_dir):
-    for file in os.listdir(input_dir):
-        if file.endswith('.jsonl'):
-            with open(os.path.join(input_dir, file), 'r') as fin:
-                yield json.loads(fin.readline().strip()), file
-    
-
-def yielder_json(input_dir):
-    for file in os.listdir(input_dir):
+def yielder_json(input_dir, files):
+    for file in files:
         if file.endswith('.json'):
             with open(os.path.join(input_dir, file), 'r') as fin:
                 yield json.load(fin), file
     
+
+def yielder_parquet(input_dir, files):
+    for file in files:
+        if file.endswith('.parquet'):
+            yield pd.read_parquet(os.path.join(input_dir, file)), file
+
 
 def create_payload(dato):
     payload = {
@@ -596,6 +597,57 @@ def create_payload(dato):
     return payload
 
 
+def process_pred(res, ftype):
+    if ftype == 'jsonl':
+        res_to_dump = [
+            {
+                'id': k, 
+                'fos_predictions': [
+                    {
+                        'L1': pr['L1'], 
+                        'L2': pr['L2'], 
+                        'L3': pr['L3'], 
+                        'L4': pr['L4'], 
+                        'L5': pr['L5'], 
+                        'L6': pr['L6']    
+                    } for pr in v[:2]
+                ],
+                'fos_scores': [
+                    {
+                        'score_for_level_3': pr['score_for_L3'],
+                        'score_for_level_4': pr['score_for_L4'],
+                        'score_for_level_5': pr['score_for_L5']
+                    } for pr in v[:2]
+                ]
+            } for k, v in res.items()
+        ]
+    else:
+        res_to_dump = []
+        for k, v in res.items():
+            res_to_dump.extend([{
+                'id': k,
+                'L1': pr['L1'],
+                'L2': pr['L2'],
+                'L3': pr['L3'],
+                'L4': pr['L4'],
+                'score_for_L3': pr['score_for_L3'],
+                'score_for_L4': pr['score_for_L4']
+            } for pr in v[:2]])
+    return res_to_dump
+
+
+def save_pred(res, ftype, opath):
+    if ftype == 'jsonl':
+        with open(opath, 'w') as fout:
+            json.dump(res, fout)
+    else:
+        # create the dataframe
+        df = pd.DataFrame(res)
+        # create the parquet
+        table = pa.Table.from_pandas(df)
+        pq.write_table(table, opath)
+
+
 if __name__ == '__main__':
     # create the output directory
     logger.info('Creating the output directory: {}'.format(arguments.out_path))
@@ -607,9 +659,15 @@ if __name__ == '__main__':
         logger.error('The input directory does not exist: {}'.format(arguments.in_path))
         raise Exception('The input directory does not exist: {}'.format(arguments.in_path))
     # make sure that the publications have the necessary metadata
-    total_files = len([f for f in os.listdir(arguments.in_path) if f.endswith('.json')])
+    # get files and init yielder
+    if arguments.file_type == 'jsonl':
+        total_files = [f for f in os.listdir(arguments.in_path) if f.endswith('.json')]
+        my_yielder = yielder_json
+    else:
+        total_files = [f for f in os.listdir(arguments.in_path) if f.endswith('.parquet')]
+        my_yielder = yielder_parquet
     batch_size = arguments.batch_size
-    for idx, tup in enumerate(tqdm(yielder_json(arguments.in_path), desc='Parsing input files for inference', total=total_files)):
+    for idx, tup in enumerate(tqdm(my_yielder(arguments.in_path, total_files), desc='Parsing input files for inference', total=len(total_files))):
         dato, file_name = tup[0], tup[1]
         # each dato has lines of publications
         # split the lines into chunks
@@ -618,42 +676,21 @@ if __name__ == '__main__':
         # parse the chunks -- for each chunk create the payload for inference
         logger.info(f'Inferring chunks of file number:{idx} and file name: {file_name}')
         for chunk in tqdm(chunks, desc=f'Inferring chunks of file number:{idx} and file name: {file_name}'):
+            if arguments.file_type == 'parquet':
+                chunk = chunk.to_dict('records')
             logger.info('Creating payload for chunk')
             payload_to_infer = create_payload(chunk)
             logger.info('Payload for chunk')
             # infer to Level 1 - Level 4
-            logger.info('Inferring up to Level 6')
+            logger.info('Inferring')
             infer_res = infer(
-                emphasize=arguments.emphasize,
-                # return_triplets=arguments.return_triplets,
-                payload = payload_to_infer
+                payload = payload_to_infer,
+                only_l4=arguments.only_l4
             )
-            logger.info(f'Inference up to Level 6 done for chunk')
-            res_to_dump = [
-                {
-                    'id': k, 
-                    'fos_predictions': [
-                        {
-                            'Level 1': pr['L1'], 
-                            'Level 2': pr['L2'], 
-                            'Level 3': pr['L3'], 
-                            'Level 4': pr['L4'], 
-                            'Level 5': pr['L5'], 
-                            'Level 6': pr['L6']    
-                        } for pr in v
-                    ],
-                    'fos_scores': [
-                        {
-                            'score_for_level_3': pr['score_for_L3'],
-                            'score_for_level_4': pr['score_for_L4'],
-                            'score_for_level_5': pr['score_for_L5']
-                        } for pr in v
-                    ]
-                } for k, v in infer_res.items()
-            ]
+            logger.info(f'Inference done for chunk')
+            res_to_dump = process_pred(infer_res, arguments.file_type)
             chunk_predictions.extend(res_to_dump)
         # dump the predictions
         logger.info(f'Dumping the predictions for the file with index: {idx} and file name: {file_name}')
         output_file_name = os.path.join(arguments.out_path, file_name)
-        with open(output_file_name, 'w') as fout:
-            json.dump(chunk_predictions, fout)
+        save_pred(chunk_predictions, arguments.file_type, output_file_name)
