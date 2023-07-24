@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 # Distribution / packaging
+sentence-transformers_all-mpnet-base-v2
 .Python
 *.p
 *.zip
