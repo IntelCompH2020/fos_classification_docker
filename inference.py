@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument("--out_path", type=str, default='/mnt/data/fos_classification_docker/output_files/', help="The directory where the output files will be written", required=False)
     parser.add_argument("--log_path", type=str,default='/mnt/data/fos_classification_docker/output_files/fos_inference.log',  help="The path for the log file.", required=False)
     parser.add_argument("--emphasize", type=str,default='citations',  help="If you want to emphasize in published venue or the cit/refs", required=False)
+    parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=False)
     # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
     parser.add_argument("--batch_size", type=int, default=500,  help="The batch size", required=False)
     args = parser.parse_args()
@@ -168,6 +169,7 @@ def infer(**kwargs):
     top_L4 = kwargs.get('top_L4', 4)
     # other variables
     emphasize = kwargs.get('emphasize', 'citations')
+    only_l4 = kwargs.get('only_l4', False)
     # return_triplets = kwargs.get('return_triplets', True)
     # ids of publications
     ids = kwargs['payload']['dois']
@@ -177,17 +179,13 @@ def infer(**kwargs):
     abstracts = kwargs['payload']['abstracts']
     # add the publications to the graph that we are going to infer
     logger.info('Adding publications to the graph')
-    add_nodes_time = time.time()
     add(multigraph, published_venues, cit_ref_venues)
-    logger.info(f'Adding publications to the graph took {time.time() - add_nodes_time} seconds')
     # inferring relationships
-    infer_relas_time = time.time()
     logger.info('Inferring relationships')
     _ = [
         infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=True, relationship='cites'),
         infer_relationship(ids, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite=False, relationship='published')
     ]
-    logger.info(f'Inferring relationships took {time.time() - infer_relas_time} seconds. This inference is about L1-L4')
     out = {}
     logger.info('Retrieving results for publications')
     all_l3s = [(relationship[0], relationship[1], relationship[2]) for relationship in multigraph.edges(data='in_L3', nbunch=ids) if relationship[2]]
@@ -245,9 +243,10 @@ def infer(**kwargs):
                             list(L3_to_L2[L4_to_L3[tup[0]]].keys())[0], L4_to_L3[tup[0]], tup) for tup in L4]
             ############################################
             # infer L5 and L6
-            predict_one_l5_l6_time = time.time()
-            preds_with_l5_l6 = infer_l5_l6(my_triplets, doi, titles[doi], abstracts[doi])
-            logger.info(f'Predicting L5 and L6 for {doi} took {time.time() - predict_one_l5_l6_time} seconds')
+            if not only_l4:
+                my_triplets = infer_l5_l6(my_triplets, doi, titles[doi], abstracts[doi])
+            else:
+                my_triplets = [(tup[0], tup[1], tup[2], tup[3], None, None) if len(tup) > 3 else (tup[0], tup[1], tup[2], None, None, None) for tup in my_tups]
             out[doi] = [
                 (
                     {
@@ -260,7 +259,7 @@ def infer(**kwargs):
                         'score_for_L4': triplet[3][1] if triplet[3] else 0.0,
                         'score_for_L5': triplet[4][1] if triplet[4] else 0.0,
                     }
-                ) for triplet in preds_with_l5_l6
+                ) for triplet in my_triplets
             ]
             ############################################
         else:
@@ -282,14 +281,15 @@ def infer(**kwargs):
                     my_tups.append((tup[2], tup[1], tup[0]))
             ############################################
             # infer the L5 and L6
-            predict_one_l5_l6_time = time.time()
-            preds_with_l5_l6 = infer_l5_l6(
-                my_tups,
-                doi,
-                titles[doi],
-                abstracts[doi]
-            )
-            logger.info(f'Predicting L5 and L6 for {doi} took {time.time() - predict_one_l5_l6_time} seconds')
+            if not only_l4:
+                my_tups = infer_l5_l6(
+                    my_tups,
+                    doi,
+                    titles[doi],
+                    abstracts[doi]
+                )
+            else:
+                my_tups = [(tup[0], tup[1], tup[2], tup[3], None, None) if len(tup) > 3 else (tup[0], tup[1], tup[2], None, None, None) for tup in my_tups]
             ############################################
             out[doi] = [
                 (
@@ -304,7 +304,7 @@ def infer(**kwargs):
                         'score_for_L4': triplet[3][1] if triplet[3] else 0.0,
                         'score_for_L5': triplet[4][1] if triplet[4] else 0.0
                     }
-                ) for triplet in preds_with_l5_l6
+                ) for triplet in my_tups
             ]
     return out
 
