@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument("--out_path", type=str, default='/output_files', help="The directory where the output files will be written", required=False)
     parser.add_argument("--log_path", type=str,default='fos_inference.log',  help="The path for the log file.", required=False)
     parser.add_argument("--emphasize", type=str,default='citations',  help="If you want to emphasize in published venue or the cit/refs", required=False)
-    parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=True)
+    parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=False)
     parser.add_argument("--file_type", type=str, default='parquet',  help="the file type we will load", required=True)
     # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
     parser.add_argument("--batch_size", type=int, default=10000,  help="The batch size", required=False)
