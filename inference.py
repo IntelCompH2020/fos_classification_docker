@@ -11,6 +11,12 @@ TODOs:
 Variable conventions:
 -- we can infer publications with whatever id they have as long as they have the required metadata
 -- however the id will be called "doi" in the code
+
+python3 inference.py 
+--in_path="/storage2/sotkot/bibliometrics_toolkit/data/P1_2000_2010_split/oa_pubs_dir_5" 
+--out_path="/storage2/sotkot/bibliometrics_toolkit/data/P1_2000_2010_split/oa_pubs_dir_5_output" 
+--only_l4=True 
+--file_type="parquet"
 """
 
 
@@ -42,7 +48,7 @@ def parse_args():
     parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=True)
     parser.add_argument("--file_type", type=str, default='parquet',  help="the file type we will load", required=True)
     # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
-    parser.add_argument("--batch_size", type=int, default=500,  help="The batch size", required=False)
+    parser.add_argument("--batch_size", type=int, default=10000,  help="The batch size", required=False)
     args = parser.parse_args()
     return args
     ##############################################
