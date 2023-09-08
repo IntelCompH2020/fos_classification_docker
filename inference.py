@@ -683,7 +683,7 @@ if __name__ == '__main__':
         logger.info(f'Inferring chunks of file number:{idx} and file name: {file_name}')
         for chunk in tqdm(chunks, desc=f'Inferring chunks of file number:{idx} and file name: {file_name}'):
             if arguments.file_type == 'parquet':
-                chunk = chunk.to_dict('records')
+                chunk = chunk.fillna("NULL").to_dict('records')
             logger.info('Creating payload for chunk')
             payload_to_infer = create_payload(chunk)
             logger.info('Payload for chunk')
