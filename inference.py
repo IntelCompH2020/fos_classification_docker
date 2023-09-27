@@ -47,6 +47,7 @@ def parse_args():
     parser.add_argument("--log_path", type=str,default='fos_inference.log',  help="The path for the log file.", required=False)
     parser.add_argument("--emphasize", type=str,default='citations',  help="If you want to emphasize in published venue or the cit/refs", required=False)
     parser.add_argument("--only_l4", type=lambda x:bool(distutils.util.strtobool(x)), default=False,  help="If you want to only infer L4", required=False)
+    parser.add_argument("--extra_metadata", type=lambda x:bool(distutils.util.strtobool(x)), default=False,  help="If you want to save the metadata from the input file", required=False)
     parser.add_argument("--file_type", type=str, default='parquet',  help="the file type we will load", required=True)
     # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
     parser.add_argument("--batch_size", type=int, default=10000,  help="The batch size", required=False)
@@ -604,42 +605,94 @@ def create_payload(dato):
     return payload
 
 
-def process_pred(res, ftype):
+def process_pred(res, ftype, metadata=None, extra=False):
     if ftype == 'jsonl':
-        res_to_dump = [
-            {
-                'id': k, 
-                'fos_predictions': [
-                    {
-                        'L1': pr['L1'], 
-                        'L2': pr['L2'], 
-                        'L3': pr['L3'], 
-                        'L4': pr['L4'], 
-                        'L5': pr['L5'], 
-                        'L6': pr['L6']    
-                    } for pr in v[:2]
-                ],
-                'fos_scores': [
-                    {
-                        'score_for_level_3': pr['score_for_L3'],
-                        'score_for_level_4': pr['score_for_L4'],
-                        'score_for_level_5': pr['score_for_L5']
-                    } for pr in v[:2]
-                ]
-            } for k, v in res.items()
-        ]
+        if extra and metadata is not None:
+            chunk_dict = {d['id']: d for d in metadata}
+            res_to_dump = []
+            for k, v in res.items():
+                dato = chunk_dict[k]
+                pub_year = dato['pub_year'] if 'pub_year' in dato else None
+                citations_per_year = dato['citations_per_year'] if 'citations_per_year' in dato else None
+                doi = dato['doi'] if 'doi' in dato else None
+                res_to_dump.extend([{
+                    'id': k, 
+                    'fos_predictions': [
+                        {
+                            'L1': pr['L1'], 
+                            'L2': pr['L2'], 
+                            'L3': pr['L3'], 
+                            'L4': pr['L4'], 
+                            'L5': pr['L5'], 
+                            'L6': pr['L6']    
+                        } for pr in v[:2]
+                    ],
+                    'fos_scores': [
+                        {
+                            'score_for_level_3': pr['score_for_L3'],
+                            'score_for_level_4': pr['score_for_L4'],
+                            'score_for_level_5': pr['score_for_L5']
+                        } for pr in v[:2]
+                    ],
+                    'pub_year': pub_year,
+                    'citations_per_year': citations_per_year,
+                    'doi': doi
+                }])
+        else:                        
+            res_to_dump = [
+                {
+                    'id': k, 
+                    'fos_predictions': [
+                        {
+                            'L1': pr['L1'], 
+                            'L2': pr['L2'], 
+                            'L3': pr['L3'], 
+                            'L4': pr['L4'], 
+                            'L5': pr['L5'], 
+                            'L6': pr['L6']    
+                        } for pr in v[:2]
+                    ],
+                    'fos_scores': [
+                        {
+                            'score_for_level_3': pr['score_for_L3'],
+                            'score_for_level_4': pr['score_for_L4'],
+                            'score_for_level_5': pr['score_for_L5']
+                        } for pr in v[:2]
+                    ]
+                } for k, v in res.items()
+            ]
     else:
         res_to_dump = []
+        if extra and metadata is not None:
+            chunk_dict = {d['id']: d for d in metadata}
         for k, v in res.items():
-            res_to_dump.extend([{
-                'id': k,
-                'L1': pr['L1'],
-                'L2': pr['L2'],
-                'L3': pr['L3'],
-                'L4': pr['L4'],
-                'score_for_L3': pr['score_for_L3'],
-                'score_for_L4': pr['score_for_L4']
-            } for pr in v[:2]])
+            if extra and metadata is not None:
+                dato = chunk_dict[k]
+                pub_year = dato['pub_year'] if 'pub_year' in dato else None
+                citations_per_year = dato['citations_per_year'] if 'citations_per_year' in dato else None
+                doi = dato['doi'] if 'doi' in dato else None
+                res_to_dump.extend([{
+                    'id': k,
+                    'L1': pr['L1'],
+                    'L2': pr['L2'],
+                    'L3': pr['L3'],
+                    'L4': pr['L4'],
+                    'score_for_L3': pr['score_for_L3'],
+                    'score_for_L4': pr['score_for_L4'],
+                    'pub_year': pub_year,
+                    'citations_per_year': citations_per_year,
+                    'doi': doi
+                } for pr in v[:2]])
+            else:
+                res_to_dump.extend([{
+                    'id': k,
+                    'L1': pr['L1'],
+                    'L2': pr['L2'],
+                    'L3': pr['L3'],
+                    'L4': pr['L4'],
+                    'score_for_L3': pr['score_for_L3'],
+                    'score_for_L4': pr['score_for_L4']
+                } for pr in v[:2]])
     return res_to_dump
 
 
@@ -695,7 +748,10 @@ if __name__ == '__main__':
                 only_l4=arguments.only_l4
             )
             logger.info(f'Inference done for chunk')
-            res_to_dump = process_pred(infer_res, arguments.file_type)
+            if arguments.extra_metadata:
+                res_to_dump = process_pred(infer_res, arguments.file_type, metadata=chunk, extra=True)
+            else:
+                res_to_dump = process_pred(infer_res, arguments.file_type)
             chunk_predictions.extend(res_to_dump)
         # dump the predictions
         logger.info(f'Dumping the predictions for the file with index: {idx} and file name: {file_name}')
