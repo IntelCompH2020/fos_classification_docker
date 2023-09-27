@@ -34,7 +34,7 @@ from sklearn.cluster import AgglomerativeClustering
 
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0" 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1" 
 
 
 class TextProcessor():
@@ -53,7 +53,7 @@ class TextProcessor():
             ]
         
         if torch.cuda.is_available():
-            self.device = f'cuda:{0}'
+            self.device = f'cuda:{1}'
         else:
             self.device = 'cpu'
         print(f'Using device: {self.device}')

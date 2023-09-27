@@ -11,6 +11,12 @@ TODOs:
 Variable conventions:
 -- we can infer publications with whatever id they have as long as they have the required metadata
 -- however the id will be called "doi" in the code
+
+python3 inference.py 
+--in_path="/storage2/sotkot/bibliometrics_toolkit/data/P1_2000_2010_split/oa_pubs_dir_5" 
+--out_path="/storage2/sotkot/bibliometrics_toolkit/data/P1_2000_2010_split/oa_pubs_dir_5_output" 
+--only_l4=True 
+--file_type="parquet"
 """
 
 
@@ -39,10 +45,10 @@ def parse_args():
     parser.add_argument("--out_path", type=str, default='/output_files', help="The directory where the output files will be written", required=False)
     parser.add_argument("--log_path", type=str,default='fos_inference.log',  help="The path for the log file.", required=False)
     parser.add_argument("--emphasize", type=str,default='citations',  help="If you want to emphasize in published venue or the cit/refs", required=False)
-    parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=True)
+    parser.add_argument("--only_l4", type=bool, default=False,  help="If you want to only infer L4", required=False)
     parser.add_argument("--file_type", type=str, default='parquet',  help="the file type we will load", required=True)
     # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
-    parser.add_argument("--batch_size", type=int, default=500,  help="The batch size", required=False)
+    parser.add_argument("--batch_size", type=int, default=10000,  help="The batch size", required=False)
     args = parser.parse_args()
     return args
     ##############################################
@@ -677,7 +683,7 @@ if __name__ == '__main__':
         logger.info(f'Inferring chunks of file number:{idx} and file name: {file_name}')
         for chunk in tqdm(chunks, desc=f'Inferring chunks of file number:{idx} and file name: {file_name}'):
             if arguments.file_type == 'parquet':
-                chunk = chunk.to_dict('records')
+                chunk = chunk.fillna("NULL").to_dict('records')
             logger.info('Creating payload for chunk')
             payload_to_infer = create_payload(chunk)
             logger.info('Payload for chunk')

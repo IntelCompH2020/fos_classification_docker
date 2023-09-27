@@ -78,7 +78,7 @@ class MultiGraph(nx.MultiDiGraph):
         starting_entities = [n[0] for n in list(self.nodes(data=entity_chain[0])) if n[1] if n[0]]
 
         new_edges = {}
-        for entity in tqdm(starting_entities, disable=True):
+        for entity in tqdm(starting_entities, disable=False, desc='Inferring relationships'):
 
             """ Predefines for working along with the API"""
             edgelist_existing = list(self.edges(data=relationship_chain[1], nbunch=entity))
