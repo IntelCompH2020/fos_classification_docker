@@ -55,6 +55,15 @@ def parse_args():
     return args
     ##############################################
 
+
+def load_excel(my_path):
+    """
+    Load the excel file with the Level 4 names
+    """
+    level_4 = pd.read_excel(my_path).fillna('N/A').to_dict('records')
+    return level_4
+
+
 # parse args
 arguments = parse_args()
 
@@ -85,6 +94,9 @@ with open('L3_to_L2.json', 'r') as fin:
     L3_to_L2 = json.load(fin)
 with open('L4_to_L3.json', 'r') as fin:
     L4_to_L3 = json.load(fin)
+
+level_4_names = load_excel('level_4_names.xlsx') # this is always in the repository -- no need to pass a path
+level_4_ids_2_names = {level_4['Level 4']: level_4['Level 4 Name'] for level_4 in level_4_names}
 
 
 def infer_relationship(entity, multigraph, top_L1, top_L2, top_L3, top_L4, overwrite, relationship):
@@ -606,6 +618,7 @@ def create_payload(dato):
 
 
 def process_pred(res, ftype, metadata=None, extra=False):
+    # filter L4 and assign names while processing the predictions
     if ftype == 'jsonl':
         res_to_dump = []
         if extra and metadata is not None:
@@ -623,7 +636,7 @@ def process_pred(res, ftype, metadata=None, extra=False):
                             'L1': pr['L1'], 
                             'L2': pr['L2'], 
                             'L3': pr['L3'], 
-                            'L4': pr['L4'], 
+                            'L4': 'N/A' if pr['L3'] == 'developmental biology' or pr['L4'] not in level_4_ids_2_names or level_4_ids_2_names[pr['L4']] == 'N/A' else level_4_ids_2_names[pr['L4']], 
                             'L5': pr['L5'], 
                             'L6': pr['L6']    
                         } for pr in v[:2]
@@ -648,7 +661,7 @@ def process_pred(res, ftype, metadata=None, extra=False):
                                 'L1': pr['L1'], 
                                 'L2': pr['L2'], 
                                 'L3': pr['L3'], 
-                                'L4': pr['L4'], 
+                                'L4': 'N/A' if pr['L3'] == 'developmental biology' or pr['L4'] not in level_4_ids_2_names or level_4_ids_2_names[pr['L4']] == 'N/A' else level_4_ids_2_names[pr['L4']], 
                                 'L5': pr['L5'], 
                                 'L6': pr['L6']    
                             } for pr in v[:2]
@@ -677,7 +690,9 @@ def process_pred(res, ftype, metadata=None, extra=False):
                     'L1': pr['L1'],
                     'L2': pr['L2'],
                     'L3': pr['L3'],
-                    'L4': pr['L4'],
+                    'L4': 'N/A' if pr['L3'] == 'developmental biology' or pr['L4'] not in level_4_ids_2_names or level_4_ids_2_names[pr['L4']] == 'N/A' else level_4_ids_2_names[pr['L4']],
+                    'L5': pr['L5'], 
+                    'L6': pr['L6'],
                     'score_for_L3': pr['score_for_L3'],
                     'score_for_L4': pr['score_for_L4'],
                     'pub_year': pub_year,
@@ -690,7 +705,9 @@ def process_pred(res, ftype, metadata=None, extra=False):
                     'L1': pr['L1'],
                     'L2': pr['L2'],
                     'L3': pr['L3'],
-                    'L4': pr['L4'],
+                    'L4': 'N/A' if pr['L3'] == 'developmental biology' or pr['L4'] not in level_4_ids_2_names or level_4_ids_2_names[pr['L4']] == 'N/A' else level_4_ids_2_names[pr['L4']],
+                    'L5': pr['L5'], 
+                    'L6': pr['L6'],
                     'score_for_L3': pr['score_for_L3'],
                     'score_for_L4': pr['score_for_L4']
                 } for pr in v[:2]])
