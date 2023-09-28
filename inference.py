@@ -518,7 +518,7 @@ def yielder_json(input_dir, files):
 def yielder_parquet(input_dir, files):
     for file in files:
         if file.endswith('.parquet'):
-            yield pd.read_parquet(os.path.join(input_dir, file)), file
+            yield pd.read_parquet(os.path.join(input_dir, file)).fillna('N/A'), file
 
 
 def create_payload(dato):
@@ -607,14 +607,15 @@ def create_payload(dato):
 
 def process_pred(res, ftype, metadata=None, extra=False):
     if ftype == 'jsonl':
+        res_to_dump = []
         if extra and metadata is not None:
             chunk_dict = {d['id']: d for d in metadata}
-            res_to_dump = []
-            for k, v in res.items():
+        for k, v in res.items():
+            if extra and metadata is not None:
                 dato = chunk_dict[k]
-                pub_year = dato['pub_year'] if 'pub_year' in dato else None
-                citations_per_year = dato['citations_per_year'] if 'citations_per_year' in dato else None
-                doi = dato['doi'] if 'doi' in dato else None
+                pub_year = dato['pub_year'] if 'pub_year' in dato and str(dato['pub_year']) != 'N/A' else None
+                citations_per_year = list(dato['citations_per_year']) if 'citations_per_year' in dato and str(dato['citations_per_year']) != "N/A" else None
+                doi = dato['doi'] if 'doi' in dato and str(dato['doi']) != 'N/A' else None
                 res_to_dump.extend([{
                     'id': k, 
                     'fos_predictions': [
@@ -638,29 +639,29 @@ def process_pred(res, ftype, metadata=None, extra=False):
                     'citations_per_year': citations_per_year,
                     'doi': doi
                 }])
-        else:                        
-            res_to_dump = [
-                {
-                    'id': k, 
-                    'fos_predictions': [
-                        {
-                            'L1': pr['L1'], 
-                            'L2': pr['L2'], 
-                            'L3': pr['L3'], 
-                            'L4': pr['L4'], 
-                            'L5': pr['L5'], 
-                            'L6': pr['L6']    
-                        } for pr in v[:2]
-                    ],
-                    'fos_scores': [
-                        {
-                            'score_for_level_3': pr['score_for_L3'],
-                            'score_for_level_4': pr['score_for_L4'],
-                            'score_for_level_5': pr['score_for_L5']
-                        } for pr in v[:2]
-                    ]
-                } for k, v in res.items()
-            ]
+            else:                        
+                res_to_dump = [
+                    {
+                        'id': k, 
+                        'fos_predictions': [
+                            {
+                                'L1': pr['L1'], 
+                                'L2': pr['L2'], 
+                                'L3': pr['L3'], 
+                                'L4': pr['L4'], 
+                                'L5': pr['L5'], 
+                                'L6': pr['L6']    
+                            } for pr in v[:2]
+                        ],
+                        'fos_scores': [
+                            {
+                                'score_for_level_3': pr['score_for_L3'],
+                                'score_for_level_4': pr['score_for_L4'],
+                                'score_for_level_5': pr['score_for_L5']
+                            } for pr in v[:2]
+                        ]
+                    } for k, v in res.items()
+                ]
     else:
         res_to_dump = []
         if extra and metadata is not None:
@@ -668,9 +669,9 @@ def process_pred(res, ftype, metadata=None, extra=False):
         for k, v in res.items():
             if extra and metadata is not None:
                 dato = chunk_dict[k]
-                pub_year = dato['pub_year'] if 'pub_year' in dato else None
-                citations_per_year = dato['citations_per_year'] if 'citations_per_year' in dato else None
-                doi = dato['doi'] if 'doi' in dato else None
+                pub_year = dato['pub_year'] if 'pub_year' in dato and str(dato['pub_year']) != 'N/A' else None
+                citations_per_year = list(dato['citations_per_year']) if 'citations_per_year' in dato and str(dato['citations_per_year']) != "N/A" else None
+                doi = dato['doi'] if 'doi' in dato and str(dato['doi']) != 'N/A' else None
                 res_to_dump.extend([{
                     'id': k,
                     'L1': pr['L1'],
