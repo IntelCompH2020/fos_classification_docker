@@ -23,6 +23,6 @@ WORKDIR /app
 
 COPY . /app
 
-ENTRYPOINT ["python3"]
-
-CMD ["inference.py"]
+# ENTRYPOINT ["python3", "inference.py"]
+# Initialize
+CMD ["bash"]
