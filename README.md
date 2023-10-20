@@ -35,7 +35,7 @@ The flag -t specifies the name of the image that will be created with an optiona
 ## Run image container
 To run a container with the previous configuration, the following command is needed:
 
-`docker run <--rm> -i <--name CONTAINER-NAME> -v path/to/input/local/data:/input_files -v path/to/output/local/data:/output_files IMAGE-NAME`
+`docker run <--rm> -i <--name CONTAINER-NAME> -v path/to/input/local/data:/input_files -v path/to/output/local/data:/output_files IMAGE-NAME python inference.py <args>`
 
 ## Flags:
 
@@ -48,10 +48,14 @@ To run a container with the previous configuration, the following command is nee
 
 ## Example
 
-`docker run --rm -i --name fos_inference_docker -v path/to/input/local/data/:/input_files -v path/to/output/local/data:/output_files intelcomp_fos`
+`docker run --rm -i --name fos_inference_docker -v path/to/input/local/data/:/input_files -v path/to/output/local/data:/output_files intelcomp_fos python inference.py --file_type="parquet"`
 
 - **path/to/input/local/data/** --> where the input files exist in the host
 - **path/to/output/local/data** --> a directory in the host where you want the container to save the output
+
+## Test example
+
+`docker run --rm -i --name fos_inference_docker -v /path/to/input_files/demo_parquet:/input_files -v path/to/output/local/data:/output_files intelcomp_fos python inference.py --file_type="parquet"`
 
 ## Miscellaneous
 - **If you want to connect to the docker -->** `docker exec -it fos_inference_docker /bin/bash`
