@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument("--only_l4", type=lambda x:bool(distutils.util.strtobool(x)), default=False,  help="If you want to only infer L4", required=False)
     parser.add_argument("--extra_metadata", type=lambda x:bool(distutils.util.strtobool(x)), default=False,  help="If you want to save the metadata from the input file", required=False)
     parser.add_argument("--file_type", type=str, default='parquet',  help="the file type we will load", required=True)
-    # parser.add_argument("--return_triplets", type=bool,default=True,  help="If you want to enforce hierarchy", required=False)
+    parser.add_argument("--only_text", type=lambda x:bool(distutils.util.strtobool(x)), default=False, help="If you want to infer only with text", required=False)
     parser.add_argument("--batch_size", type=int, default=10000,  help="The batch size", required=False)
     args = parser.parse_args()
     return args
@@ -165,6 +165,68 @@ def add_to_predictions(tups, title, abstract):
     return final_tups
 
 
+def infer_only_text(my_id, title, abstract):
+    ######################################################
+    # infer L5/L6 for the inferred L4s -- #NOTE duplicate code -- refactor one day
+    processed_title = text_processor.preprocess_text(title)
+    processed_abstract = text_processor.preprocess_text(abstract)
+    my_text = processed_title + processed_abstract
+    res = emit_candidate_ngrams(my_text, 5)
+    if not res:
+        return []
+    my_unigrams, bi_tri_grams = res
+    all_hits = set(my_unigrams) | bi_tri_grams
+    all_l5s = [node[0] for node in multigraph.nodes(data='L5') if node[1]]
+    ######################################################
+    my_res = filter_level_5(
+        all_l5s, multigraph, all_hits, only_text=True
+    )
+    out = dict()
+    for r in my_res:
+        level_5 = r[0]
+        level_6 = '/'.join(r[3])
+        if level_6 == '':
+            continue
+        level_4 = '_'.join(r[0].split('_')[:-1])
+        level_3 = L4_to_L3[level_4]
+        level_2 = L3_to_L2[level_3]
+        for lvl2 in level_2:
+            level_1 = L2_to_L1[lvl2]
+            try:
+                out[my_id].append(
+                    {
+                        'L1': level_1,
+                        'L2': lvl2,
+                        'L3': level_3,
+                        'L4': 'N/A' if level_3 == 'developmental biology' or level_4 not in level_4_ids_2_names or level_4_ids_2_names[level_4] == 'N/A' else level_4_ids_2_names[level_4],
+                        'L5': level_5,
+                        'L6': level_6,
+                        'L4_id': level_4,
+                        'L5_id': level_5,
+                        'score_for_L3': 0.0,
+                        'score_for_L4': 0.0,
+                        'score_for_L5': r[1]
+                    }
+                )
+            except KeyError:
+                out[my_id] = [
+                    {
+                        'L1': level_1,
+                        'L2': lvl2,
+                        'L3': level_3,
+                        'L4': 'N/A' if level_3 == 'developmental biology' or level_4 not in level_4_ids_2_names or level_4_ids_2_names[level_4] == 'N/A' else level_4_ids_2_names[level_4],
+                        'L5': level_5,
+                        'L6': level_6,
+                        'L4_id': level_4,
+                        'L5_id': level_5,
+                        'score_for_L3': 0.0,
+                        'score_for_L4': 0.0,
+                        'score_for_L5': r[1]
+                    }
+                ]
+    return out
+
+
 def infer_l5_l6(tups, doi, title, abstract):
     # get the inferred L4s and infer their L5/L6
     # check if the title and abstract are available
@@ -190,7 +252,6 @@ def infer(**kwargs):
     top_L3 = kwargs.get('top_L3', 3)
     top_L4 = kwargs.get('top_L4', 4)
     # other variables
-    emphasize = kwargs.get('emphasize', 'citations')
     only_l4 = kwargs.get('only_l4', False)
     # return_triplets = kwargs.get('return_triplets', True)
     # ids of publications
@@ -745,6 +806,10 @@ if __name__ == '__main__':
         total_files = [f for f in os.listdir(arguments.in_path) if f.endswith('.parquet')]
         my_yielder = yielder_parquet
     batch_size = arguments.batch_size
+    if arguments.only_text:
+        logger.info('We infer only with the text -- title and abstract')
+    else:
+        logger.info('We infer normally')
     for idx, tup in enumerate(tqdm(my_yielder(arguments.in_path, total_files), desc='Parsing input files for inference', total=len(total_files))):
         dato, file_name = tup[0], tup[1]
         # each dato has lines of publications
@@ -756,20 +821,41 @@ if __name__ == '__main__':
         for chunk in tqdm(chunks, desc=f'Inferring chunks of file number:{idx} and file name: {file_name}'):
             if arguments.file_type == 'parquet':
                 chunk = chunk.fillna("NULL").to_dict('records')
-            logger.info('Creating payload for chunk')
-            payload_to_infer = create_payload(chunk)
-            logger.info('Payload for chunk')
-            # infer to Level 1 - Level 4
-            logger.info('Inferring')
-            infer_res = infer(
-                payload = payload_to_infer,
-                only_l4=arguments.only_l4
-            )
-            logger.info(f'Inference done for chunk')
-            if arguments.extra_metadata:
-                res_to_dump = process_pred(infer_res, arguments.file_type, metadata=chunk, extra=True)
+            if arguments.only_text: #NOTE maybe we could batch it -- however too much work right now for something not used frequently
+                res_to_dump = []
+                for chunk_dato in tqdm(chunk, desc='Inferring only with text'):
+                    if 'id' not in chunk_dato:
+                        logger.info('publication without id, skipping ...')
+                        continue
+                    if 'title' not in chunk_dato or chunk_dato['title'] == 'NULL':
+                        title = ''
+                    else:
+                        title = chunk_dato['title']
+                    if 'abstract' not in chunk_dato or chunk_dato['abstract'] == 'NULL':
+                        abstract = ''
+                    else:
+                        abstract = chunk_dato['abstract']
+                    r = infer_only_text(
+                        chunk_dato['id'],
+                        title,
+                        abstract
+                    )
+                    res_to_dump.append(r)
             else:
-                res_to_dump = process_pred(infer_res, arguments.file_type)
+                logger.info('Creating payload for chunk')
+                payload_to_infer = create_payload(chunk)
+                logger.info('Payload for chunk')
+                # infer to Level 1 - Level 4
+                logger.info('Inferring')
+                infer_res = infer(
+                    payload = payload_to_infer,
+                    only_l4=arguments.only_l4
+                )
+                logger.info(f'Inference done for chunk')
+                if arguments.extra_metadata:
+                    res_to_dump = process_pred(infer_res, arguments.file_type, metadata=chunk, extra=True)
+                else:
+                    res_to_dump = process_pred(infer_res, arguments.file_type)
             chunk_predictions.extend(res_to_dump)
         # dump the predictions
         logger.info(f'Dumping the predictions for the file with index: {idx} and file name: {file_name}')
