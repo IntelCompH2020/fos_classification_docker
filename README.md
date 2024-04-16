@@ -61,3 +61,5 @@ To run a container with the previous configuration, the following command is nee
 - **If you want to connect to the docker -->** `docker exec -it fos_inference_docker /bin/bash`
 - **If you want to see the logs of the docker -->** `docker logs fos_inference_docker`
 - **Copy the results of the docker to the host destination folder -->** `docker cp fos_inference_docker: ./output_test_files ./`
+
+![This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement No. 101004870. H2020-SC6-GOVERNANCE-2018-2019-2020 / H2020-SC6-GOVERNANCE-2020](https://github.com/IntelCompH2020/.github/blob/main/profile/banner.png)
